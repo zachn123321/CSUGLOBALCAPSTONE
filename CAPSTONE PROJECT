@@ -1,1 +1,138 @@
+import pandas as pd
+import matplotlib.pyplot as plt
 
+# Loading the dataset from my desktop.
+df = pd.read_csv("/Users/zachs/Desktop/STUDENTSUCCESSDATA.csv")
+
+# Creating binary risk variables.
+# Dropout = 1, others = 0
+df["At_Risk"] = df["Target"].apply(lambda x: 1 if x == "Dropout" else 0)
+
+# Printing to Check.
+print(df.shape)
+print(df["Target"].value_counts())
+print(df.head())
+
+# Creating and Printing Variable Counts.
+counts = df["Target"].value_counts()
+
+print(counts)
+
+# Bar Chart Creation and Plotting.
+plt.figure(figsize=(6,4))  # helps force rendering
+counts.plot(kind="bar")
+
+plt.title("Student Outcome Distribution")
+plt.xlabel("Outcome")
+plt.ylabel("Count")
+
+plt.show()
+
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, precision_score, recall_score, roc_auc_score
+
+# Features and Target.
+X = df.drop(columns=["Target", "At_Risk"])
+y = df["At_Risk"]
+
+# Split into training and testing data
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.30, random_state=42, stratify=y
+)
+
+# Training Logistic Regression Model.
+log_model = LogisticRegression(max_iter=2000)
+log_model.fit(X_train, y_train)
+
+# Predictions.
+log_pred = log_model.predict(X_test)
+log_prob = log_model.predict_proba(X_test)[:, 1]
+
+# Printing Results.
+print("Logistic Regression Results")
+print("Accuracy:", round(accuracy_score(y_test, log_pred), 3))
+print("Precision:", round(precision_score(y_test, log_pred), 3))
+print("Recall:", round(recall_score(y_test, log_pred), 3))
+print("ROC-AUC:", round(roc_auc_score(y_test, log_prob), 3))
+
+from sklearn.ensemble import RandomForestClassifier
+
+# Training Random Forest Model.
+rf_model = RandomForestClassifier(n_estimators=200, random_state=42)
+rf_model.fit(X_train, y_train)
+
+# Predictions.
+rf_pred = rf_model.predict(X_test)
+rf_prob = rf_model.predict_proba(X_test)[:, 1]
+
+# Printing Results.
+print("Random Forest Results")
+print("Accuracy:", round(accuracy_score(y_test, rf_pred), 3))
+print("Precision:", round(precision_score(y_test, rf_pred), 3))
+print("Recall:", round(recall_score(y_test, rf_pred), 3))
+print("ROC-AUC:", round(roc_auc_score(y_test, rf_prob), 3))
+
+# Comparing the Models in ONE Table.
+results = pd.DataFrame({
+    "Model": ["Logistic Regression", "Random Forest"],
+    "Accuracy": [accuracy_score(y_test, log_pred), accuracy_score(y_test, rf_pred)],
+    "Precision": [precision_score(y_test, log_pred), precision_score(y_test, rf_pred)],
+    "Recall": [recall_score(y_test, log_pred), recall_score(y_test, rf_pred)],
+    "ROC-AUC": [roc_auc_score(y_test, log_prob), roc_auc_score(y_test, rf_prob)]
+})
+
+print(results.round(3))
+
+# Creating Dataframe with Risk Probabilities.
+risk_df = X_test.copy()
+
+risk_df["Actual"] = y_test.values
+risk_df["Risk_Probability"] = rf_prob
+
+# Creating Risk Tiers.
+risk_df["Risk_Tier"] = pd.cut(
+    risk_df["Risk_Probability"],
+    bins=[-0.01, 0.30, 0.60, 1.00],
+    labels=["Low Risk", "Moderate Risk", "High Risk"]
+)
+
+# Viewing Sample Results.
+print(risk_df[["Risk_Probability", "Risk_Tier", "Actual"]].head(15))
+
+# Checking Dropout Rate by Risk Tier.
+print(pd.crosstab(risk_df["Risk_Tier"], risk_df["Actual"], normalize="index").round(3))
+
+# Creating Bar chart of Risk Tiers.
+tier_counts = risk_df["Risk_Tier"].value_counts().sort_index()
+
+plt.figure(figsize=(6,4))
+
+tier_counts.plot(kind="bar")
+
+plt.title("Risk Tier Distribution")
+plt.xlabel("Risk Tier")
+plt.ylabel("Count")
+
+plt.xticks(rotation=0)
+
+plt.show()
+
+from sklearn.metrics import accuracy_score
+
+# Adding Predictions.
+fair_df = risk_df.copy()
+
+fair_df["Predicted"] = rf_pred
+
+# Comparing Accuracy by Gender.
+for group in fair_df["Gender"].unique():
+
+    group_data = fair_df[fair_df["Gender"] == group]
+
+    acc = accuracy_score(group_data["Actual"], group_data["Predicted"])
+
+    print("Gender group:", group)
+    print("Count:", len(group_data))
+    print("Accuracy:", round(acc, 3))
+    print()
